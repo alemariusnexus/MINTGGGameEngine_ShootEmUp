@@ -442,6 +442,20 @@ void movePlayer(float dt, int buttonState) {
   moveDir *= dt*playerMoveSpeed;
 
   player.move(moveDir);
+
+  uint16_t width = player.getSprite().getWidth();
+  uint16_t height = player.getSprite().getHeight();
+
+  if (player.getX() < 0) {
+    player.setX(0);
+  } else if (player.getX() >= screen.getWidth()-width) {
+    player.setX(screen.getWidth()-width);
+  }
+  if (player.getY() < 0) {
+    player.setY(0);
+  } else if (player.getY() >= screen.getHeight()-height) {
+    player.setY(screen.getHeight()-height);
+  }
 }
 
 void moveAsteroids(float dt) {
@@ -469,6 +483,14 @@ void loop() {
   // ********** GAME LOGIC **********
 
   float dt = game.getFrameTime() * 1e-3f; // delta time (seconds)
+
+  if (  (buttonState & (1 << BUTTON_A))
+    &&  (buttonState & (1 << BUTTON_B))
+    &&  (buttonState & (1 << BUTTON_START))
+  ) {
+    game.audio().setMute(!game.audio().isMute());
+    delay(50);
+  }
 
   spawnAsteroids(dt);
 
