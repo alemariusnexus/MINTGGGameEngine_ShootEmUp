@@ -500,6 +500,11 @@ void loop() {
 
   game.draw();
 
+  /*if (buttonState & (1 << BUTTON_START)  &&  buttonState & (1 << BUTTON_B)) {
+    screen.saveScreenshot("/screenshot.rgb");
+    delay(500);
+  }*/
+
   game.sleepNextFrame();
 
 }
