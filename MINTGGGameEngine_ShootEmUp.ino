@@ -1,12 +1,4 @@
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <MCP23008.h>
-#include <MINTGGGameEngine.h>
-
-#include "defines.h"
-#include "audio.h"
-
-using namespace MINTGGGameEngine;
+#include "engine.h"
 
 
 enum class Gun {
@@ -21,16 +13,6 @@ enum GameObjectTag {
   TagLife           = 0x0100
 };
 
-
-// TFT-Display
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST); // CS, DC, RST
-
-// MCP23009 (IO-Erweiterung)
-MCP23008 mcp(0x20);
-
-// Base game setup
-ScreenST7735 screen(&tft);
-Game game;
 
 // Bitmaps
 Bitmap backgroundBmp;
@@ -154,37 +136,32 @@ void setupText() {
   game.addText(gameOverScoreText);
 }
 
-void setup() {
+void onWeaponChanged() {
+  if (playerGun == Gun::Normal) {
+      playerGun = Gun::Fast;
+    } else if (playerGun == Gun::Fast) {
+      playerGun = Gun::Spread;
+    } else {
+      playerGun = Gun::Normal;
+    }
+}
 
-  // ********** PERIPHERAL SETUP **********
+void onMuteChanged() {
+  game.audio().setMute(!game.audio().isMute());
+}
 
-  Serial.begin(115200);
+void gameSetup() {
+  game.input().defineButtonMCP23009("up", 0);
+  game.input().defineButtonMCP23009("down", 1);
+  game.input().defineButtonMCP23009("left", 2);
+  game.input().defineButtonMCP23009("right", 3);
+  game.input().defineButtonMCP23009("a", 4);
+  game.input().defineButtonMCP23009("b", 5);
+  game.input().defineButtonMCP23009("start", 6);
+  game.input().defineButtonMCP23009("joy", 7);
 
-  if (!SD.begin(SD_CS)) {
-    Serial.println("SD init failed.");
-    while (true);
-  }
-
-  Wire.begin();
-
-  mcp.begin();
-  mcp.pinMode1(BUTTON_UP, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_DOWN, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_LEFT, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_RIGHT, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_A, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_B, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_START, INPUT_PULLUP);
-  mcp.pinMode1(BUTTON_JOY, INPUT_PULLUP);
-
-  screen.begin();
-  game.begin(screen);
-  game.audio().begin(SPEAKER_PIN);
-
-
-  // ********** GAME SETUP **********
-
-  game.setCollisionCallback(onCollision);
+  game.input().defineButtonCombo({"up", "start"}, onMuteChanged);
+  game.input().defineButtonCombo({"b"}, onWeaponChanged);
 
   setupBitmaps();
   setupAudio();
@@ -240,7 +217,7 @@ void shootPlayerProjectile(float dt) {
   game.audio().playClip(shootAudio);
 }
 
-void handleGameOver(float dt, int buttonState) {
+void handleGameOver(float dt) {
   if (isGameOver()) {
     gameOverBackground.setVisible(true);
 
@@ -257,7 +234,7 @@ void handleGameOver(float dt, int buttonState) {
   }
 
   if (isGameOver()) {
-    if (buttonState & (1 << BUTTON_START)) {
+    if (game.input().isButtonPressed("start")) {
       resetGame();
     }
   }
@@ -291,7 +268,7 @@ void handleDifficulty(float dt) {
   }
 }
 
-void shootPlayer(float dt, int buttonState) {
+void shootPlayer(float dt) {
   long now = millis();
 
   if (playerGunResetTime >= 0  &&  now >= playerGunResetTime) {
@@ -299,7 +276,7 @@ void shootPlayer(float dt, int buttonState) {
     playerGunResetTime = -1;
   }
 
-  if (buttonState & (1 << BUTTON_A)) {
+  if (game.input().isButtonPressed("a")) {
     if (playerGun == Gun::Normal) {
       const long fireSpeed = 500;
 
@@ -386,7 +363,7 @@ void spawnAsteroids(float dt) {
   }
 }
 
-void handleText(float dt, int buttonState) {
+void handleText(float dt) {
   scoreText.setText(String(score));
 
   auto lifeObjs = game.getGameObjectsWithTag(TagLife);
@@ -397,16 +374,6 @@ void handleText(float dt, int buttonState) {
       GameObject life = GameObject::createBitmap(2 + i*(lifeBmp.getWidth()+2), 2, lifeBmp, false);
       life.setTag(TagLife);
       game.spawnObject(life);
-    }
-  }
-
-  if (buttonState & (1 << BUTTON_B)) {
-    if (playerGun == Gun::Normal) {
-      playerGun = Gun::Fast;
-    } else if (playerGun == Gun::Fast) {
-      playerGun = Gun::Spread;
-    } else {
-      playerGun = Gun::Normal;
     }
   }
 }
@@ -423,18 +390,18 @@ void handleInvincible(float dt) {
   }
 }
 
-void movePlayer(float dt, int buttonState) {
+void movePlayer(float dt) {
   Vec2 moveDir;
 
-  if (buttonState & (1 << BUTTON_LEFT)  &&  !(buttonState & (1 << BUTTON_RIGHT))) {
+  if (game.input().isButtonPressed("left")  &&  !game.input().isButtonPressed("right")) {
     moveDir.setX(-1);
-  } else if (buttonState & (1 << BUTTON_RIGHT)  &&  !(buttonState & (1 << BUTTON_LEFT))) {
+  } else if (game.input().isButtonPressed("right")  &&  !game.input().isButtonPressed("left")) {
     moveDir.setX(1);
   }
-  if (buttonState & (1 << BUTTON_UP)  &&  !(buttonState & (1 << BUTTON_DOWN))) {
+  if (game.input().isButtonPressed("up")  &&  !game.input().isButtonPressed("down")) {
     moveDir.setY(-1);
   }
-  if (buttonState & (1 << BUTTON_DOWN)  &&  !(buttonState & (1 << BUTTON_UP))) {
+  if (game.input().isButtonPressed("down")  &&  !game.input().isButtonPressed("up")) {
     moveDir.setY(1);
   }
 
@@ -472,38 +439,22 @@ void moveProjectiles(float dt) {
   }
 }
 
-void loop() {
-  
-  // ********** PERIPHERAL STATE **********
-
-  int buttonState = ~mcp.read8();
-
-
+void gameLoop(float dt) {
 
   // ********** GAME LOGIC **********
 
-  float dt = game.getFrameTime() * 1e-3f; // delta time (seconds)
-
-  if (  (buttonState & (1 << BUTTON_A))
-    &&  (buttonState & (1 << BUTTON_B))
-    &&  (buttonState & (1 << BUTTON_START))
-  ) {
-    game.audio().setMute(!game.audio().isMute());
-    delay(50);
-  }
-
   spawnAsteroids(dt);
 
-  handleText(dt, buttonState);
-  handleGameOver(dt, buttonState);
+  handleText(dt);
+  handleGameOver(dt);
 
   if (!isGameOver()) {
     handleDifficulty(dt);
     handleInvincible(dt);
-    movePlayer(dt, buttonState);
+    movePlayer(dt);
     moveAsteroids(dt);
     moveProjectiles(dt);
-    shootPlayer(dt, buttonState);
+    shootPlayer(dt);
   }
 
   String debugStr = "P:";
@@ -517,18 +468,6 @@ void loop() {
   debugStr += " A:" + String(game.getGameObjectsWithTag(TagAsteroid).size());
   debugStr += " L:" + String(playerNumLives);
   debugText.setText(debugStr);
-
-  game.checkCollisions();
-
-  game.draw();
-
-  /*if (buttonState & (1 << BUTTON_START)  &&  buttonState & (1 << BUTTON_B)) {
-    screen.saveScreenshot("/screenshot.rgb");
-    delay(500);
-  }*/
-
-  game.sleepNextFrame();
-
 }
 
 
