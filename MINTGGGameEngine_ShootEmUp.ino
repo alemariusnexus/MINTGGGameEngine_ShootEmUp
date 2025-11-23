@@ -1,5 +1,8 @@
 #include "engine.h"
 
+// Remove this if no joystick is connected
+#define HAVE_JOYSTICK
+
 
 enum class Gun {
   Normal,
@@ -65,6 +68,7 @@ uint16_t asteroidChosenSpawnInterval = 0;
 float asteroidSpeed = 60.0f;
 
 
+
 bool isGameOver() {
   return playerNumLives <= 0;
 }
@@ -88,6 +92,8 @@ void setupAudio() {
   asteroidHitAudio = createAsteroidHitAudio();
   playerHitAudio = createPlayerHitAudio();
   gameOverAudio = createGameOverAudio();
+
+  game.audio().setMute(true);
 }
 
 void setupPlayer() {
@@ -160,7 +166,13 @@ void gameSetup() {
   game.input().defineButtonMCP23009("start", 6);
   game.input().defineButtonMCP23009("joy", 7);
 
+#ifdef HAVE_JOYSTICK
+  game.input().defineAxis("x", D1, 0.0f, 1.0f);
+  game.input().defineAxis("y", D2, 1.0f, 0.0f);
+#endif
+
   game.input().defineButtonCombo({"up", "start"}, onMuteChanged);
+  game.input().defineButtonCombo({"joy"}, onMuteChanged);
   game.input().defineButtonCombo({"b"}, onWeaponChanged);
 
   setupBitmaps();
@@ -393,6 +405,15 @@ void handleInvincible(float dt) {
 void movePlayer(float dt) {
   Vec2 moveDir;
 
+  // Analog stick (if installed)
+  if (game.input().hasAxis("x")) {
+    moveDir.setX(game.input().getAxis("x"));
+  }
+  if (game.input().hasAxis("y")) {
+    moveDir.setY(game.input().getAxis("y"));
+  }
+
+  // Movement buttons
   if (game.input().isButtonPressed("left")  &&  !game.input().isButtonPressed("right")) {
     moveDir.setX(-1);
   } else if (game.input().isButtonPressed("right")  &&  !game.input().isButtonPressed("left")) {
