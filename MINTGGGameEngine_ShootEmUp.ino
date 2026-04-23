@@ -3,6 +3,9 @@
 // Remove this if no joystick is connected
 #define HAVE_JOYSTICK
 
+// Remove this if no SD card is connected
+#define HAVE_SDCARD
+
 
 enum class Gun {
   Normal,
@@ -11,11 +14,14 @@ enum class Gun {
 };
 
 enum GameObjectTag {
-  TagPlayerBullet   = 0x0001,
-  TagAsteroid       = 0x0002,
-  TagLife           = 0x0100
+  TagPlayerBullet   = (1 << 0),
+  TagAsteroid       = (1 << 1),
+  TagLife           = (1 << 2)
 };
 
+
+// MCP2300X IO Expander
+GPIODeviceMCP2300X ioExpander;
 
 // Bitmaps
 Bitmap backgroundBmp;
@@ -75,6 +81,7 @@ bool isGameOver() {
 
 
 void setupBitmaps() {
+#ifdef HAVE_SDCARD
   backgroundBmp = Bitmap::loadBMP("/background.bmp");
   backgroundGameOverBmp = Bitmap::loadBMP("/background-gameover.bmp");
   lifeBmp = Bitmap::loadBMP("/heart.bmp");
@@ -84,6 +91,17 @@ void setupBitmaps() {
   bulletSmallBmp = Bitmap::loadBMP("/bullet-small.bmp");
   asteroidSmallBmp = Bitmap::loadBMP("/asteroid-small.bmp");
   asteroidLargeBmp = Bitmap::loadBMP("/asteroid-large.bmp");
+#else
+  backgroundBmp = Bitmap(160, 128, epd_bitmap_background);
+  backgroundGameOverBmp = Bitmap(160, 128, epd_bitmap_background_gameover);
+  lifeBmp = Bitmap(16, 16, epd_bitmap_heart, epd_bitmap_alpha_heart);
+  scoreBmp = Bitmap(16, 15, epd_bitmap_star, epd_bitmap_alpha_star);
+  playerBmp = Bitmap(24, 22, epd_bitmap_player, epd_bitmap_alpha_player);
+  bulletNormalBmp = Bitmap(6, 12, epd_bitmap_bullet_normal, epd_bitmap_alpha_bullet_normal);
+  bulletSmallBmp = Bitmap(7, 7, epd_bitmap_bullet_small, epd_bitmap_alpha_bullet_small);
+  asteroidSmallBmp = Bitmap(12, 12, epd_bitmap_asteroid_small, epd_bitmap_alpha_asteroid_small);
+  asteroidLargeBmp = Bitmap(24, 24, epd_bitmap_asteroid_large, epd_bitmap_alpha_asteroid_large);
+#endif
 }
 
 void setupAudio() {
@@ -157,14 +175,16 @@ void onMuteChanged() {
 }
 
 void gameSetup() {
-  game.input().defineButtonMCP23009("up", 0);
-  game.input().defineButtonMCP23009("down", 1);
-  game.input().defineButtonMCP23009("left", 2);
-  game.input().defineButtonMCP23009("right", 3);
-  game.input().defineButtonMCP23009("a", 4);
-  game.input().defineButtonMCP23009("b", 5);
-  game.input().defineButtonMCP23009("start", 6);
-  game.input().defineButtonMCP23009("joy", 7);
+  ioExpander.begin();
+
+  game.input().defineButton("up", 0, ioExpander);
+  game.input().defineButton("down", 1, ioExpander);
+  game.input().defineButton("left", 2, ioExpander);
+  game.input().defineButton("right", 3, ioExpander);
+  game.input().defineButton("a", 4, ioExpander);
+  game.input().defineButton("b", 5, ioExpander);
+  game.input().defineButton("start", 6, ioExpander);
+  game.input().defineButton("joy", 7, ioExpander);
 
 #ifdef HAVE_JOYSTICK
   game.input().defineAxis("x", D1, 0.0f, 1.0f);
@@ -426,7 +446,9 @@ void movePlayer(float dt) {
     moveDir.setY(1);
   }
 
-  moveDir.normalize();
+  if (moveDir.lengthSq() > 1.0f) {
+    moveDir.normalize();
+  }
   moveDir *= dt*playerMoveSpeed;
 
   player.move(moveDir);
