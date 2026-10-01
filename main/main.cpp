@@ -1,10 +1,16 @@
 #include "engine.h"
 
+#include "images.h"
+
 // Remove this if no joystick is connected
 #define HAVE_JOYSTICK
 
 // Remove this if no SD card is connected
 #define HAVE_SDCARD
+
+using namespace std;
+
+LOG_USE_TAG("main")
 
 
 enum class Gun {
@@ -21,7 +27,7 @@ enum GameObjectTag {
 
 
 // MCP2300X IO Expander
-GPIODeviceMCP2300X ioExpander;
+GPIODeviceMCP2300X ioExpander(I2C_SCL, I2C_SDA);
 
 // Bitmaps
 Bitmap backgroundBmp;
@@ -63,13 +69,13 @@ float playerStartY;
 int playerNumLives;
 float playerMoveSpeed = 100.0f;
 Gun playerGun = Gun::Normal;
-long playerGunResetTime = -1;
-long playerLastShootTime = -1;
-long playerInvincibleEnd = -1;
+timer_mstick_t playerGunResetTime = -1;
+timer_mstick_t playerLastShootTime = -1;
+timer_mstick_t playerInvincibleEnd = -1;
 
 // Asteroid state
 uint16_t asteroidsActiveTarget;
-long asteroidLastSpawnTime = -1;
+timer_mstick_t asteroidLastSpawnTime = -1;
 uint16_t asteroidChosenSpawnInterval = 0;
 float asteroidSpeed = 60.0f;
 
@@ -82,15 +88,15 @@ bool isGameOver() {
 
 void setupBitmaps() {
 #ifdef HAVE_SDCARD
-  backgroundBmp = Bitmap::loadBMP("/background.bmp");
-  backgroundGameOverBmp = Bitmap::loadBMP("/background-gameover.bmp");
-  lifeBmp = Bitmap::loadBMP("/heart.bmp");
-  scoreBmp = Bitmap::loadBMP("/star.bmp");
-  playerBmp = Bitmap::loadBMP("/player.bmp");
-  bulletNormalBmp = Bitmap::loadBMP("/bullet-normal.bmp");
-  bulletSmallBmp = Bitmap::loadBMP("/bullet-small.bmp");
-  asteroidSmallBmp = Bitmap::loadBMP("/asteroid-small.bmp");
-  asteroidLargeBmp = Bitmap::loadBMP("/asteroid-large.bmp");
+  backgroundBmp = Bitmap::loadBMP("/sdcard/background.bmp");
+  backgroundGameOverBmp = Bitmap::loadBMP("/sdcard/background-gameover.bmp");
+  lifeBmp = Bitmap::loadBMP("/sdcard/heart.bmp");
+  scoreBmp = Bitmap::loadBMP("/sdcard/star.bmp");
+  playerBmp = Bitmap::loadBMP("/sdcard/player.bmp");
+  bulletNormalBmp = Bitmap::loadBMP("/sdcard/bullet-normal.bmp");
+  bulletSmallBmp = Bitmap::loadBMP("/sdcard/bullet-small.bmp");
+  asteroidSmallBmp = Bitmap::loadBMP("/sdcard/asteroid-small.bmp");
+  asteroidLargeBmp = Bitmap::loadBMP("/sdcard/asteroid-large.bmp");
 #else
   backgroundBmp = Bitmap(160, 128, epd_bitmap_background);
   backgroundGameOverBmp = Bitmap(160, 128, epd_bitmap_background_gameover);
@@ -135,27 +141,29 @@ void setupMiscObjects() {
   scoreIcon.setZOrder(ZOrderForeground);
   game.spawnObject(scoreIcon);
 
-  playerProjectileDespawnZone = GameObject::createColliderRect(-500, -100, 1000+screen.getWidth(), 70);
+  playerProjectileDespawnZone = GameObject::createColliderRect (
+      -500, -100, 1000+game.getScreen().getWidth(), 70);
   game.spawnObject(playerProjectileDespawnZone);
 
-  asteroidDespawnZone = GameObject::createColliderRect(-500, screen.getHeight()+30, 1000+screen.getWidth(), 100);
+  asteroidDespawnZone = GameObject::createColliderRect (
+      -500, game.getScreen().getHeight()+30, 1000+game.getScreen().getWidth(), 100);
   game.spawnObject(asteroidDespawnZone);
 }
 
 void setupText() {
   debugText = Text(60, 20);
   debugText.setVisible(false);
-  debugText.setColor(ST77XX_GREEN);
+  debugText.setColor(Color::GREEN);
   game.addText(debugText);
 
   scoreText = Text(100, 2);
-  scoreText.setColor(ST77XX_YELLOW);
-  scoreText.setSize(2);
+  scoreText.setColor(Color::YELLOW);
   game.addText(scoreText);
 
-  gameOverScoreText = Text(50, 90);
-  gameOverScoreText.setColor(ST77XX_YELLOW);
-  gameOverScoreText.setSize(3);
+  gameOverScoreText = Text(game.getScreen().getWidth()/2, 90);
+  gameOverScoreText.setAnchor(Text::Anchor::TopCenter);
+  gameOverScoreText.setColor(Color::YELLOW);
+  gameOverScoreText.setScaleFactor(2);
   gameOverScoreText.setVisible(false);
   game.addText(gameOverScoreText);
 }
@@ -174,6 +182,19 @@ void onMuteChanged() {
   game.audio().setMute(!game.audio().isMute());
 }
 
+void resetGame() {
+    playerNumLives = 3;
+    asteroidsActiveTarget = 3;
+    score = 0;
+
+    game.despawnObjects(game.getGameObjectsWithTag(TagAsteroid));
+    game.despawnObjects(game.getGameObjectsWithTag(TagPlayerBullet));
+
+    player.setPosition(playerStartX, playerStartY);
+
+    game.audio().playClip(backgroundAudio, AudioEngine::Priority::Background, true, true);
+}
+
 void gameSetup() {
   ioExpander.begin();
 
@@ -184,11 +205,11 @@ void gameSetup() {
   game.input().defineButton("a", 4, ioExpander);
   game.input().defineButton("b", 5, ioExpander);
   game.input().defineButton("start", 6, ioExpander);
-  game.input().defineButton("joy", 7, ioExpander);
+  game.input().defineButton("joy", 7, ioExpander, InputEngine::PinFlagsActiveHigh | InputEngine::PinFlagsPulldown);
 
 #ifdef HAVE_JOYSTICK
-  game.input().defineAxis("x", D1, 0.0f, 1.0f);
-  game.input().defineAxis("y", D2, 1.0f, 0.0f);
+  game.input().defineAxis("x", 3, 0.0f, 1.0f);
+  game.input().defineAxis("y", 4, 1.0f, 0.0f);
 #endif
 
   game.input().defineButtonCombo({"up", "start"}, onMuteChanged);
@@ -204,19 +225,6 @@ void gameSetup() {
   resetGame();
 }
 
-
-void resetGame() {
-  playerNumLives = 3;
-  asteroidsActiveTarget = 3;
-  score = 0;
-
-  game.despawnObjects(game.getGameObjectsWithTag(TagAsteroid));
-  game.despawnObjects(game.getGameObjectsWithTag(TagPlayerBullet));
-
-  player.setPosition(playerStartX, playerStartY);
-
-  game.audio().playClip(backgroundAudio, AudioEngine::Priority::Background, true, true);
-}
 
 void shootPlayerProjectile(float dt) {
   if (playerGun == Gun::Normal) {
@@ -255,7 +263,7 @@ void handleGameOver(float dt) {
 
     scoreText.setVisible(false);
 
-    gameOverScoreText.setText(String(score));
+    gameOverScoreText.setText(to_string(score));
     gameOverScoreText.setVisible(true);
   } else {
     gameOverBackground.setVisible(false);
@@ -301,7 +309,7 @@ void handleDifficulty(float dt) {
 }
 
 void shootPlayer(float dt) {
-  long now = millis();
+  auto now = TimerGetTickcountMs();
 
   if (playerGunResetTime >= 0  &&  now >= playerGunResetTime) {
     playerGun = Gun::Normal;
@@ -344,7 +352,7 @@ void spawnAsteroid() {
     asteroidBmp = asteroidSmallBmp;
   }
 
-  float ax = game.randReal((float) -asteroidBmp.getWidth(), (float) screen.getWidth());
+  float ax = game.randReal((float) -asteroidBmp.getWidth(), (float) game.getScreen().getWidth());
   float ay = -asteroidBmp.getHeight() - game.randReal(0.0f, 20.0f);
 
   FlipDir flipDir;
@@ -371,7 +379,7 @@ void spawnAsteroids(float dt) {
     return;
   }
 
-  long now = millis();
+  auto now = TimerGetTickcountMs();
 
   //                      numTooFew       1       2       3       4       5+
   const uint16_t minSpawnIntervals[] = {  500,    300,    200,    100,    50    };
@@ -396,7 +404,7 @@ void spawnAsteroids(float dt) {
 }
 
 void handleText(float dt) {
-  scoreText.setText(String(score));
+  scoreText.setText(to_string(score));
 
   auto lifeObjs = game.getGameObjectsWithTag(TagLife);
   if (lifeObjs.size() != playerNumLives) {
@@ -411,8 +419,8 @@ void handleText(float dt) {
 }
 
 void handleInvincible(float dt) {
-  if (playerInvincibleEnd >= 0  &&  millis() < playerInvincibleEnd) {
-    if ((millis()/200)%2 == 0) {
+  if (playerInvincibleEnd >= 0  &&  TimerGetTickcountMs() < playerInvincibleEnd) {
+    if ((TimerGetTickcountMs()/200)%2 == 0) {
       player.setVisible(true);
     } else {
       player.setVisible(false);
@@ -458,13 +466,13 @@ void movePlayer(float dt) {
 
   if (player.getX() < 0) {
     player.setX(0);
-  } else if (player.getX() >= screen.getWidth()-width) {
-    player.setX(screen.getWidth()-width);
+  } else if (player.getX() >= game.getScreen().getWidth()-width) {
+    player.setX(game.getScreen().getWidth()-width);
   }
   if (player.getY() < 0) {
     player.setY(0);
-  } else if (player.getY() >= screen.getHeight()-height) {
-    player.setY(screen.getHeight()-height);
+  } else if (player.getY() >= game.getScreen().getHeight()-height) {
+    player.setY(game.getScreen().getHeight()-height);
   }
 }
 
@@ -500,17 +508,22 @@ void gameLoop(float dt) {
     shootPlayer(dt);
   }
 
-  String debugStr = "P:";
+  string debugStr = "P:"s;
   debugStr += game.getGameObjectsWithTag(TagPlayerBullet).size();
-  debugStr += " G:";
+  debugStr += " G:"s;
   switch (playerGun) {
-  case Gun::Normal: debugStr += "N"; break;
-  case Gun::Fast:   debugStr += "F"; break;
-  case Gun::Spread: debugStr += "S"; break;
+  case Gun::Normal: debugStr += "N"s; break;
+  case Gun::Fast:   debugStr += "F"s; break;
+  case Gun::Spread: debugStr += "S"s; break;
   }
-  debugStr += " A:" + String(game.getGameObjectsWithTag(TagAsteroid).size());
-  debugStr += " L:" + String(playerNumLives);
+  debugStr += " A:"s + to_string(game.getGameObjectsWithTag(TagAsteroid).size());
+  debugStr += " L:"s + to_string(playerNumLives);
   debugText.setText(debugStr);
+}
+
+
+void postDraw(float dt)
+{
 }
 
 
@@ -531,11 +544,11 @@ void onCollision(const GameObjectCollision& coll) {
   if (coll.isInvolved(player)) {
     GameObject other = coll.getOther(player);
     if (other.hasTag(TagAsteroid)) {
-      if (playerInvincibleEnd < 0  ||  millis() >= playerInvincibleEnd) {
+      if (playerInvincibleEnd < 0  ||  TimerGetTickcountMs() >= playerInvincibleEnd) {
         game.despawnObject(other);
         playerNumLives--;
         player.setPosition(playerStartX, playerStartY);
-        playerInvincibleEnd = millis() + 2000;
+        playerInvincibleEnd = TimerGetTickcountMs() + 2000;
 
         if (isGameOver()) {
           game.audio().stopClip(backgroundAudio);
