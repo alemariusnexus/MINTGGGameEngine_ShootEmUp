@@ -1,7 +1,5 @@
 #pragma once
 
-#define MGG_ENABLE_COPYLEFT_ADDONS 1
-
 #define MGG_APP_ID      "shootemup"
 #define MGG_APP_NAME    "Shoot 'Em Up Demo"
 

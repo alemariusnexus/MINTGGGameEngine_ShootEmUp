@@ -4,7 +4,7 @@
 #include "images.h"
 
 // Remove this if no joystick is connected
-//#define HAVE_JOYSTICK
+#define HAVE_JOYSTICK
 
 using namespace std;
 

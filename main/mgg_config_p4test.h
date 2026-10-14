@@ -1,5 +1,7 @@
 #pragma once
 
+#define MGG_ENABLE_COPYLEFT_ADDONS 1
+
 #define MGG_STORAGE_SDCARD_PIN_MISO     39
 #define MGG_STORAGE_SDCARD_PIN_MOSI     44
 #define MGG_STORAGE_SDCARD_PIN_SCK      43
