@@ -1,12 +1,10 @@
-#include "engine.h"
+#include <MINTGGGameEngine.h>
 
+#include "audio.h"
 #include "images.h"
 
 // Remove this if no joystick is connected
-#define HAVE_JOYSTICK
-
-// Remove this if no SD card is connected
-#define HAVE_SDCARD
+//#define HAVE_JOYSTICK
 
 using namespace std;
 
@@ -26,8 +24,12 @@ enum GameObjectTag {
 };
 
 
+// Targeted Screen Properties
+const uint16_t targetScreenWidth = 160;
+const uint16_t targetScreenHeight = 128;
+
 // MCP2300X IO Expander
-GPIODeviceMCP2300X ioExpander(I2C_SCL, I2C_SDA);
+GPIODeviceMCP2300X ioExpander(SHOOTEMUP_I2C_PIN_SCL, SHOOTEMUP_I2C_PIN_SDA);
 
 // Bitmaps
 Bitmap backgroundBmp;
@@ -86,28 +88,68 @@ bool isGameOver() {
 }
 
 
+void setupScreen() {
+  Screen& screen = game.getScreen();
+
+  float drawScale = static_cast<float>(std::max(std::min(
+      screen.getWidth() / targetScreenWidth,
+      screen.getHeight() / targetScreenHeight),
+      1
+      ));
+  LogInfo("Using draw scale to fit to screen: %.0fx", drawScale);
+
+  game.setBackgroundColor(Color::BLACK);
+  game.setDrawScale(drawScale, drawScale);
+
+  const auto viewAreaX = static_cast<int16_t>(std::round((screen.getWidth() - targetScreenWidth*drawScale) / 2));
+  const auto viewAreaY = static_cast<int16_t>(std::round((screen.getHeight() - targetScreenHeight*drawScale) / 2));
+  const auto viewAreaW = targetScreenWidth*drawScale;
+  const auto viewAreaH = targetScreenHeight*drawScale;
+
+  game.setScreenOffset(viewAreaX, viewAreaY);
+  screen.setClipRegion(viewAreaX, viewAreaY, viewAreaW, viewAreaH);
+
+  game.setBackgroundSkipped(true);
+}
+
 void setupBitmaps() {
-#ifdef HAVE_SDCARD
-  backgroundBmp = Bitmap::loadBMP("/sdcard/background.bmp");
-  backgroundGameOverBmp = Bitmap::loadBMP("/sdcard/background-gameover.bmp");
-  lifeBmp = Bitmap::loadBMP("/sdcard/heart.bmp");
-  scoreBmp = Bitmap::loadBMP("/sdcard/star.bmp");
-  playerBmp = Bitmap::loadBMP("/sdcard/player.bmp");
-  bulletNormalBmp = Bitmap::loadBMP("/sdcard/bullet-normal.bmp");
-  bulletSmallBmp = Bitmap::loadBMP("/sdcard/bullet-small.bmp");
-  asteroidSmallBmp = Bitmap::loadBMP("/sdcard/asteroid-small.bmp");
-  asteroidLargeBmp = Bitmap::loadBMP("/sdcard/asteroid-large.bmp");
-#else
-  backgroundBmp = Bitmap(160, 128, epd_bitmap_background);
-  backgroundGameOverBmp = Bitmap(160, 128, epd_bitmap_background_gameover);
-  lifeBmp = Bitmap(16, 16, epd_bitmap_heart, epd_bitmap_alpha_heart);
-  scoreBmp = Bitmap(16, 15, epd_bitmap_star, epd_bitmap_alpha_star);
-  playerBmp = Bitmap(24, 22, epd_bitmap_player, epd_bitmap_alpha_player);
-  bulletNormalBmp = Bitmap(6, 12, epd_bitmap_bullet_normal, epd_bitmap_alpha_bullet_normal);
-  bulletSmallBmp = Bitmap(7, 7, epd_bitmap_bullet_small, epd_bitmap_alpha_bullet_small);
-  asteroidSmallBmp = Bitmap(12, 12, epd_bitmap_asteroid_small, epd_bitmap_alpha_asteroid_small);
-  asteroidLargeBmp = Bitmap(24, 24, epd_bitmap_asteroid_large, epd_bitmap_alpha_asteroid_large);
-#endif
+  Screen& screen = game.getScreen();
+
+  const string bmpSearchPaths[] = {
+    "/sdcard",
+    "/data"
+  };
+
+  bool bmpsFound = false;
+  for (const string& bmpRoot : bmpSearchPaths) {
+    if (File(File(bmpRoot), "player.bmp").exists()) {
+      LogInfo("Loading bitmaps from: %s", bmpRoot.data());
+      backgroundBmp         = Bitmap::loadBMP(screen,   bmpRoot + "/background.bmp");
+      backgroundGameOverBmp = Bitmap::loadBMP(screen,   bmpRoot + "/background-gameover.bmp");
+      lifeBmp               = Bitmap::loadBMP(screen,   bmpRoot + "/heart.bmp");
+      scoreBmp              = Bitmap::loadBMP(screen,   bmpRoot + "/star.bmp");
+      playerBmp             = Bitmap::loadBMP(screen,   bmpRoot + "/player.bmp");
+      bulletNormalBmp       = Bitmap::loadBMP(screen,   bmpRoot + "/bullet-normal.bmp");
+      bulletSmallBmp        = Bitmap::loadBMP(screen,   bmpRoot + "/bullet-small.bmp");
+      asteroidSmallBmp      = Bitmap::loadBMP(screen,   bmpRoot + "/asteroid-small.bmp");
+      asteroidLargeBmp      = Bitmap::loadBMP(screen,   bmpRoot + "/asteroid-large.bmp");
+      bmpsFound = true;
+      break;
+    }
+  }
+
+  if (!bmpsFound) {
+    LogInfo("Using baked bitmaps.");
+    backgroundBmp         = Bitmap::fromStaticData(screen,    160,   128,    epd_bitmap_background                                                   );
+    backgroundGameOverBmp = Bitmap::fromStaticData(screen,    160,   128,    epd_bitmap_background_gameover                                          );
+    lifeBmp               = Bitmap::fromStaticData(screen,    16,    16,     epd_bitmap_heart,                   epd_bitmap_alpha_heart              );
+    scoreBmp              = Bitmap::fromStaticData(screen,    16,    15,     epd_bitmap_star,                    epd_bitmap_alpha_star               );
+    playerBmp             = Bitmap::fromStaticData(screen,    23,    23,     epd_bitmap_player,                  epd_bitmap_alpha_player             );
+    bulletNormalBmp       = Bitmap::fromStaticData(screen,    6,     12,     epd_bitmap_bullet_normal,           epd_bitmap_alpha_bullet_normal      );
+    bulletSmallBmp        = Bitmap::fromStaticData(screen,    7,     7,      epd_bitmap_bullet_small,            epd_bitmap_alpha_bullet_small       );
+    asteroidSmallBmp      = Bitmap::fromStaticData(screen,    12,    12,     epd_bitmap_asteroid_small,          epd_bitmap_alpha_asteroid_small     );
+    asteroidLargeBmp      = Bitmap::fromStaticData(screen,    24,    24,     epd_bitmap_asteroid_large,          epd_bitmap_alpha_asteroid_large     );
+  }
 }
 
 void setupAudio() {
@@ -137,16 +179,16 @@ void setupMiscObjects() {
   gameOverBackground.setVisible(false);
   game.spawnObject(gameOverBackground);
 
-  scoreIcon = GameObject::createBitmap(80, 0, scoreBmp, false);
+  scoreIcon = GameObject::createBitmap(80, 2, scoreBmp, false);
   scoreIcon.setZOrder(ZOrderForeground);
   game.spawnObject(scoreIcon);
 
   playerProjectileDespawnZone = GameObject::createColliderRect (
-      -500, -100, 1000+game.getScreen().getWidth(), 70);
+      -500, -100, 1000+targetScreenWidth, 70);
   game.spawnObject(playerProjectileDespawnZone);
 
   asteroidDespawnZone = GameObject::createColliderRect (
-      -500, game.getScreen().getHeight()+30, 1000+game.getScreen().getWidth(), 100);
+      -500, targetScreenHeight+30, 1000+targetScreenWidth, 100);
   game.spawnObject(asteroidDespawnZone);
 }
 
@@ -156,14 +198,14 @@ void setupText() {
   debugText.setColor(Color::GREEN);
   game.addText(debugText);
 
-  scoreText = Text(100, 2);
+  scoreText = Text(100, 3);
   scoreText.setColor(Color::YELLOW);
   game.addText(scoreText);
 
-  gameOverScoreText = Text(game.getScreen().getWidth()/2, 90);
+  gameOverScoreText = Text(targetScreenWidth/2, 90);
   gameOverScoreText.setAnchor(Text::Anchor::TopCenter);
   gameOverScoreText.setColor(Color::YELLOW);
-  gameOverScoreText.setScaleFactor(2);
+  gameOverScoreText.setScale(2, 2);
   gameOverScoreText.setVisible(false);
   game.addText(gameOverScoreText);
 }
@@ -206,6 +248,7 @@ void gameSetup() {
   game.input().defineButton("b", 5, ioExpander);
   game.input().defineButton("start", 6, ioExpander);
   game.input().defineButton("joy", 7, ioExpander, InputEngine::PinFlagsActiveHigh | InputEngine::PinFlagsPulldown);
+  game.input().defineButton("quit", -1);
 
 #ifdef HAVE_JOYSTICK
   game.input().defineAxis("x", 3, 0.0f, 1.0f);
@@ -216,6 +259,7 @@ void gameSetup() {
   game.input().defineButtonCombo({"joy"}, onMuteChanged);
   game.input().defineButtonCombo({"b"}, onWeaponChanged);
 
+  setupScreen();
   setupBitmaps();
   setupAudio();
   setupPlayer();
@@ -308,6 +352,12 @@ void handleDifficulty(float dt) {
   }
 }
 
+void handleQuit() {
+  if (game.input().isButtonPressed("quit")) {
+      game.quit();
+  }
+}
+
 void shootPlayer(float dt) {
   auto now = TimerGetTickcountMs();
 
@@ -352,7 +402,7 @@ void spawnAsteroid() {
     asteroidBmp = asteroidSmallBmp;
   }
 
-  float ax = game.randReal((float) -asteroidBmp.getWidth(), (float) game.getScreen().getWidth());
+  float ax = game.randReal((float) -asteroidBmp.getWidth(), (float) targetScreenWidth);
   float ay = -asteroidBmp.getHeight() - game.randReal(0.0f, 20.0f);
 
   FlipDir flipDir;
@@ -364,8 +414,18 @@ void spawnAsteroid() {
   default: flipDir = FlipDir::None;
   }
 
+  Rotation rot;
+  switch (game.randInt(3)) {
+  case 0: rot = Rotation::Rot0; break;
+  case 1: rot = Rotation::Rot90; break;
+  case 2: rot = Rotation::Rot180; break;
+  case 3: rot = Rotation::Rot270; break;
+  default: rot = Rotation::Rot0;
+  }
+
   GameObject asteroid = GameObject::createBitmap(ax, ay, asteroidBmp);
   asteroid.setFlipDir(flipDir);
+  asteroid.setRotation(rot);
   asteroid.setTag(TagAsteroid);
   asteroid.setMoveDirection(game.randReal(-0.5f, 0.5f), 1.0f);
   game.spawnObject(asteroid);
@@ -413,6 +473,7 @@ void handleText(float dt) {
     for (int i = 0 ; i < playerNumLives ; i++) {
       GameObject life = GameObject::createBitmap(2 + i*(lifeBmp.getWidth()+2), 2, lifeBmp, false);
       life.setTag(TagLife);
+      life.setZOrder(ZOrderOverlay);
       game.spawnObject(life);
     }
   }
@@ -466,13 +527,13 @@ void movePlayer(float dt) {
 
   if (player.getX() < 0) {
     player.setX(0);
-  } else if (player.getX() >= game.getScreen().getWidth()-width) {
-    player.setX(game.getScreen().getWidth()-width);
+  } else if (player.getX() >= targetScreenWidth-width) {
+    player.setX(targetScreenWidth-width);
   }
   if (player.getY() < 0) {
     player.setY(0);
-  } else if (player.getY() >= game.getScreen().getHeight()-height) {
-    player.setY(game.getScreen().getHeight()-height);
+  } else if (player.getY() >= targetScreenHeight-height) {
+    player.setY(targetScreenHeight-height);
   }
 }
 
@@ -493,6 +554,8 @@ void moveProjectiles(float dt) {
 void gameLoop(float dt) {
 
   // ********** GAME LOGIC **********
+
+  handleQuit();
 
   spawnAsteroids(dt);
 

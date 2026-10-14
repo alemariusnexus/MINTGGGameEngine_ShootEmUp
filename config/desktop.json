@@ -1,0 +1,17 @@
+{
+	"keymap" : {
+		"Up" : "up",
+		"Down" : "down",
+		"Left" : "left",
+		"Right" : "right",
+		"Control" : "a",
+		"Tab" : "b",
+		"Space" : "start",
+		"M" : "joy",
+		"Q" : "quit"
+	},
+	"screen" : {
+		"transformMode" : "fast",
+		"keepAspectRatio" : true
+	}
+}
