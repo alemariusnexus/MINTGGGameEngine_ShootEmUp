@@ -585,11 +585,6 @@ void gameLoop(float dt) {
 }
 
 
-void postDraw(float dt)
-{
-}
-
-
 
 void onCollision(const GameObjectCollision& coll) {
   if (coll.isInvolved(playerProjectileDespawnZone)) {
