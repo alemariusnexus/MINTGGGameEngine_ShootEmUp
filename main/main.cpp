@@ -6,6 +6,9 @@
 // Remove this if no joystick is connected
 #define HAVE_JOYSTICK
 
+// Enable to use a fixed draw scale factor, independent of screen resolution
+//#define FIXED_DRAW_SCALE 2
+
 using namespace std;
 
 LOG_USE_TAG("main")
@@ -29,7 +32,7 @@ const uint16_t targetScreenWidth = 160;
 const uint16_t targetScreenHeight = 128;
 
 // MCP2300X IO Expander
-GPIODeviceMCP2300X ioExpander(SHOOTEMUP_I2C_PIN_SCL, SHOOTEMUP_I2C_PIN_SDA);
+GPIODeviceMCP230XX ioExpander(1);
 
 // Bitmaps
 Bitmap backgroundBmp;
@@ -91,12 +94,17 @@ bool isGameOver() {
 void setupScreen() {
   Screen& screen = game.getScreen();
 
+#ifdef FIXED_DRAW_SCALE
+  float drawScale = FIXED_DRAW_SCALE;
+  LogInfo("Using fixed draw scale: %.0fx", drawScale);
+#else
   float drawScale = static_cast<float>(std::max(std::min(
       screen.getWidth() / targetScreenWidth,
       screen.getHeight() / targetScreenHeight),
       1
       ));
   LogInfo("Using draw scale to fit to screen: %.0fx", drawScale);
+#endif
 
   game.setBackgroundColor(Color::BLACK);
   game.setDrawScale(drawScale, drawScale);
@@ -238,7 +246,7 @@ void resetGame() {
 }
 
 void gameSetup() {
-  ioExpander.begin();
+  ioExpander.init();
 
   game.input().defineButton("up", 0, ioExpander);
   game.input().defineButton("down", 1, ioExpander);

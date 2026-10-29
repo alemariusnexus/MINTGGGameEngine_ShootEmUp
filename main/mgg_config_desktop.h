@@ -9,7 +9,3 @@
 
 // Pin doesn't matter, but it needs to be positive to enable audio
 #define MGG_AUDIO_SPEAKER_PIN           0
-
-// Game-specific
-#define SHOOTEMUP_I2C_PIN_SCL           -1
-#define SHOOTEMUP_I2C_PIN_SDA           -1
