@@ -2,6 +2,9 @@
 
 #define MGG_ENABLE_STRONG_COPYLEFT_ADDONS   1
 
+#define MGG_BUS_I2C_0_PIN_SCL           8
+#define MGG_BUS_I2C_0_PIN_SDA           7
+
 #define MGG_BUS_SPI_0_PIN_MISO          39
 #define MGG_BUS_SPI_0_PIN_MOSI          44
 #define MGG_BUS_SPI_0_PIN_SCK           43
